@@ -6,7 +6,9 @@ const links = [
   { to: '/stocks', label: 'Stocks' },
   { to: '/portfolio', label: 'Portfolio' },
   { to: '/tax', label: 'Tax' },
+  { to: '/splitwise', label: 'Shared Expenses' },  // ← add this
 ];
+
 
 export default function Sidebar() {
   return (

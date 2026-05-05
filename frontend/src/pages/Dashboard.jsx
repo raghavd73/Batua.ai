@@ -1,6 +1,4 @@
-// Dashboard.jsx
 export default function Dashboard() {
-  // later you will fetch these from backend
   const summary = {
     invested: 150000,
     currentValue: 168500,
@@ -9,34 +7,28 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-xl md:text-2xl font-semibold">Overview</h1>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <h1 style={{ fontSize: 22, fontWeight: 600, color: '#e5e7eb' }}>Overview</h1>
 
-      {/* Top cards – similar to Groww’s portfolio cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
         <Card title="Invested" value={`₹${summary.invested.toLocaleString()}`} />
-        <Card title="Current value" value={`₹${summary.currentValue.toLocaleString()}`} />
-        <Card
-          title="P&L"
-          value={`₹${summary.pnl.toLocaleString()}`}
-          accent={summary.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}
-        />
-        <Card title="Estimated tax (this FY)" value={`₹${summary.estTax.toLocaleString()}`} />
+        <Card title="Current Value" value={`₹${summary.currentValue.toLocaleString()}`} />
+        <Card title="P&L" value={`₹${summary.pnl.toLocaleString()}`} color="#22c55e" />
+        <Card title="Estimated Tax (this FY)" value={`₹${summary.estTax.toLocaleString()}`} />
       </div>
 
-      {/* Placeholder for chart and holdings like Groww */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-4">
-          <h2 className="text-sm font-medium mb-2">Portfolio value</h2>
-          <div className="h-48 flex items-center justify-center text-slate-500 text-xs">
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
+        <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: 16 }}>
+          <h2 style={{ fontSize: 14, fontWeight: 500, color: '#e5e7eb', marginBottom: 8 }}>Portfolio value</h2>
+          <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: 13 }}>
             (Add chart here later)
           </div>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
-          <h2 className="text-sm font-medium mb-2">Tax summary</h2>
-          <p className="text-xs text-slate-400">
-            Once you add transactions, we’ll show STCG, LTCG and tax‑saving suggestions here.
+        <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: 16 }}>
+          <h2 style={{ fontSize: 14, fontWeight: 500, color: '#e5e7eb', marginBottom: 8 }}>Tax summary</h2>
+          <p style={{ fontSize: 13, color: '#94a3b8' }}>
+            Once you add transactions, we'll show STCG, LTCG and tax-saving suggestions here.
           </p>
         </div>
       </div>
@@ -44,11 +36,11 @@ export default function Dashboard() {
   );
 }
 
-function Card({ title, value, accent }) {
+function Card({ title, value, color }) {
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col">
-      <span className="text-xs text-slate-400">{title}</span>
-      <span className={`mt-1 text-lg font-semibold ${accent || ''}`}>{value}</span>
+    <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: 16 }}>
+      <span style={{ fontSize: 12, color: '#94a3b8' }}>{title}</span>
+      <div style={{ marginTop: 6, fontSize: 18, fontWeight: 600, color: color || '#e5e7eb' }}>{value}</div>
     </div>
   );
 }

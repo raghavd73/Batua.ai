@@ -1,15 +1,14 @@
-// Layout.jsx
-import { Outlet } from 'react-router-dom';
-import Navbar from '../components/Navbar';
-import Sidebar from '../components/Sidebar';
+import { Outlet } from "react-router-dom";
+import TopNav from "../components/TopNav";
+import Sidebar from "../components/Sidebar";
 
 export default function Layout() {
   return (
-    <div className="h-screen flex flex-col bg-slate-950 text-slate-50">
-      <Navbar />
-      <div className="flex flex-1">
+    <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "#030712" }}>
+      <TopNav />
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
         <Sidebar />
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">
+        <main style={{ flex: 1, overflowY: "auto", padding: "24px" }}>
           <Outlet />
         </main>
       </div>
