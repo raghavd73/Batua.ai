@@ -52,7 +52,7 @@ export default function App() {
         <Route path="/budgeting" element={<BudgetingPage />} />
         <Route path="/mutual-funds" element={<MutualFundsPage />} />
         <Route path="/stocks" element={<StocksPage />} />
-        <Route path="/stock/mrpl" element={<StockDetailsPage />} />
+        <Route path="/stock/mrpl" element={<StockDetailsPage />} />  {/* FIXED */}
         <Route path="/stocks/:symbol" element={<StockDetailsPage />} />
         <Route path="/tax-reduction" element={<TaxReductionPage />} />
         <Route path="/payments" element={<PaymentsPage />} />

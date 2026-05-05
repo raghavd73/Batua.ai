@@ -1,23 +1,23 @@
-StocksPage.jsx // src/pages/InvestingPage.jsx
-import React, { useEffect, useState } from "react";
-import StockChart from "../components/StockChart";
+// src/pages/StocksPage.jsx
+
+import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-
-
 import {
   tradePageStyle,
   tradeContentStyle,
   tradeTabBarStyle,
   makeTradeTabStyle,
 } from "../styles/tradePageStyles";
+import {
+  fetchStockRecommendation,
+  fetchStockDetails,
+  fetchStockHistory,
+} from "../lib/StocksApi";
+
 const API_BASE =
   (import.meta.env && import.meta.env.VITE_API_BASE_URL) ||
   "http://localhost:5050";
 
-
-/**
- * Sub-tabs shown under the main "Stocks" page
- */
 const TAB_NAMES = [
   "Stocks",
   "Portfolio",
@@ -25,6 +25,54 @@ const TAB_NAMES = [
   "Orders",
   "Watchlist",
   "Features",
+];
+
+const RECENTLY_VIEWED_STORAGE_KEY = "recentlyViewedStocks";
+
+const RECENTLY_VIEWED_PLACEHOLDERS = [
+  { slot: 0 },
+  { slot: 1 },
+  { slot: 2 },
+  { name: "See more", isSeeMore: true },
+];
+
+const PLACEHOLDER_STOCKS = [
+  {
+    name: "Reliance Industries",
+    ticker: "RELIANCE",
+    price: "2945.20",
+    change: "+0.94%",
+  },
+  {
+    name: "Infosys",
+    ticker: "INFY",
+    price: "1688.30",
+    change: "+1.22%",
+  },
+  {
+    name: "Tata Consultancy Services",
+    ticker: "TCS",
+    price: "4120.40",
+    change: "-0.58%",
+  },
+  {
+    name: "HDFC Bank",
+    ticker: "HDFCBANK",
+    price: "1628.95",
+    change: "+0.37%",
+  },
+  {
+    name: "ICICI Bank",
+    ticker: "ICICIBANK",
+    price: "1214.15",
+    change: "-0.42%",
+  },
+  {
+    name: "State Bank of India",
+    ticker: "SBIN",
+    price: "782.50",
+    change: "+0.81%",
+  },
 ];
 
 export default function StocksPage() {
@@ -43,7 +91,6 @@ export default function StocksPage() {
           Stocks
         </h1>
 
-        {/* Sub-tab bar */}
         <div style={tradeTabBarStyle}>
           {TAB_NAMES.map((name) => (
             <button
@@ -62,8 +109,6 @@ export default function StocksPage() {
   );
 }
 
-/* ---------- Tab content renderers ---------- */
-
 function renderActiveTabContent(activeTab) {
   switch (activeTab) {
     case "Stocks":
@@ -71,7 +116,7 @@ function renderActiveTabContent(activeTab) {
     case "Portfolio":
       return renderPortfolioTab();
     case "Suggestions":
-      return renderSuggestionsTab();
+      return <SuggestionsTab />;
     case "Orders":
       return renderOrdersTab();
     case "Watchlist":
@@ -84,47 +129,16 @@ function renderActiveTabContent(activeTab) {
 }
 
 /* ===================== Stocks tab ===================== */
-const TIMEFRAMES = [
-  { label: "1D", range: "1d", interval: "5m" },
-  { label: "5D", range: "5d", interval: "15m" },
-  { label: "1M", range: "1mo", interval: "1h" },
-  { label: "3M", range: "3mo", interval: "1d" },
-  { label: "6M", range: "6mo", interval: "1d" },
-  { label: "YTD", range: "ytd", interval: "1d" },
-  { label: "1Y", range: "1y", interval: "1d" },
-  { label: "5Y", range: "5y", interval: "1wk" },
-  { label: "ALL", range: "max", interval: "1mo" },
-];
 
-const RECENTLY_VIEWED_STORAGE_KEY = "recentlyViewedStocks";
-
-const RECENTLY_VIEWED_PLACEHOLDERS = [
-  { slot: 0 },
-  { slot: 1 },
-  { slot: 2 },
-  { name: "See more", isSeeMore: true },
-];
-const PLACEHOLDER_STOCKS = [
-  { name: "Mangalore Refinery & Petrochemicals", ticker: "MRPL", price: "195.82", change: "+9.92%" },
-  { name: "Reliance Industries", ticker: "RELIANCE", price: "1377.20", change: "-0.25%" },
-  { name: "Indian Oil Corporation", ticker: "IOC", price: "147.82", change: "-5.57%" },
-  { name: "Bharat Petroleum", ticker: "BPCL", price: "303.40", change: "-4.98%" },
-  { name: "Hindustan Petroleum", ticker: "HPCL", price: "352.25", change: "-4.47%" },
-  { name: "Chennai Petroleum", ticker: "CPCL", price: "940.20", change: "+2.40%" },
-];
 function StocksTab() {
+  const navigate = useNavigate();
 
-const navigate = useNavigate();  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [lastQuery, setLastQuery] = useState("");
-  const [selectedStock, setSelectedStock] = useState(null);
-  const [stockDetails, setStockDetails] = useState(null);
-  const [detailsLoading, setDetailsLoading] = useState(false);
-  const [tf, setTf] = useState(TIMEFRAMES[6]); // default 1Y
-  const [candles, setCandles] = useState([]);
-  const [chartLoading, setChartLoading] = useState(false);
+
   const [recentlyViewed, setRecentlyViewed] = useState(() => {
     try {
       const raw = localStorage.getItem(RECENTLY_VIEWED_STORAGE_KEY);
@@ -133,55 +147,6 @@ const navigate = useNavigate();  const [searchTerm, setSearchTerm] = useState(""
       return [];
     }
   });
-
-  const pushRecentlyViewed = (stock, details) => {
-    // Build a clean object for the tiles
-    const payload = {
-  ticker_symbol: stock?.ticker_symbol,
-  company_name: stock?.company_name,
-  exchange: stock?.exchange,     // ✅ add
-  country: stock?.country,       // optional
-  currency: stock?.currency,     // optional
-  last_price: details?.last_price,
-  change: details?.change,
-  change_pct: details?.change_pct,
-};
-
-    setRecentlyViewed((prev) => {
-      const withoutDupes = prev.filter(
-  (s) =>
-    !(
-      s.ticker_symbol === payload.ticker_symbol &&
-      (s.exchange || "") === (payload.exchange || "")
-    )
-);
-
-      const next = [payload, ...withoutDupes].slice(0, 3);
-      localStorage.setItem(RECENTLY_VIEWED_STORAGE_KEY, JSON.stringify(next));
-      return next;
-    });
-  };
-
- const fetchCandles = async (ticker, exchange, range, interval) => {
-  setChartLoading(true);
-  try {
-    const url = `${API_BASE}/api/stocks/history?symbol=${encodeURIComponent(
-      ticker
-    )}&exchange=${encodeURIComponent(exchange || "")}&range=${encodeURIComponent(
-      range
-    )}&interval=${encodeURIComponent(interval)}`;
-
-    const res = await fetch(url);
-    if (!res.ok) return;
-
-    const data = await res.json();
-    setCandles(Array.isArray(data) ? data : []);
-  } finally {
-    setChartLoading(false);
-  }
-};
-
-
 
   const searchRow = {
     display: "flex",
@@ -222,7 +187,7 @@ const navigate = useNavigate();  const [searchTerm, setSearchTerm] = useState(""
   const dropdownItemStyle = {
     width: "100%",
     textAlign: "left",
-    padding: "8px 12px",
+    padding: "10px 12px",
     border: "none",
     background: "transparent",
     cursor: "pointer",
@@ -231,8 +196,112 @@ const navigate = useNavigate();  const [searchTerm, setSearchTerm] = useState(""
 
   const dropdownItemSecondary = {
     fontSize: "12px",
-    color: "#16a34a", // green
+    color: "#16a34a",
     fontWeight: 600,
+    marginTop: "2px",
+  };
+
+  const sectionWrapper = {
+    marginTop: "24px",
+  };
+
+  const sectionTitle = {
+    fontSize: "18px",
+    fontWeight: 700,
+    marginBottom: "12px",
+  };
+
+  const stockGrid = {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: "12px",
+  };
+
+  const stockCard = {
+    borderRadius: "16px",
+    padding: "14px 16px",
+    backgroundColor: "#ffffff",
+    color: "#111827",
+    minHeight: "96px",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
+    border: "1px solid #E5E7EB",
+    boxShadow: "0 6px 14px rgba(0,0,0,0.04)",
+    cursor: "pointer",
+  };
+
+  const stockName = {
+    fontSize: "14px",
+    fontWeight: 600,
+    marginBottom: "8px",
+    color: "#111827",
+  };
+
+  const stockPrice = {
+    fontSize: "16px",
+    fontWeight: 700,
+    color: "#111827",
+  };
+
+  const stockChange = (positive) => ({
+    fontSize: "12px",
+    fontWeight: 600,
+    marginTop: "4px",
+    color: positive ? "#16A34A" : "#DC2626",
+  });
+
+  const seeMoreCardInner = {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    alignItems: "flex-start",
+    gap: "6px",
+    color: "#111827",
+  };
+
+  const pushRecentlyViewed = (stock) => {
+    const payload = {
+      ticker_symbol: stock?.ticker_symbol,
+      company_name: stock?.company_name,
+      exchange: stock?.exchange || "NSE",
+      country: stock?.country || "India",
+      currency: stock?.currency || "INR",
+      last_price: stock?.price || stock?.last_price || "",
+      change: stock?.change || "",
+      change_pct: stock?.change_pct || "",
+    };
+
+    setRecentlyViewed((prev) => {
+      const withoutDupes = prev.filter(
+        (s) =>
+          !(
+            s.ticker_symbol === payload.ticker_symbol &&
+            (s.exchange || "") === (payload.exchange || "")
+          )
+      );
+
+      const next = [payload, ...withoutDupes].slice(0, 3);
+      localStorage.setItem(RECENTLY_VIEWED_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const handleSelectStock = (stock) => {
+    pushRecentlyViewed(stock);
+    setShowDropdown(false);
+
+    navigate(
+  `/stocks/${encodeURIComponent(stock.ticker_symbol)}?exchange=${encodeURIComponent(stock.exchange || "NSE")}`,
+  {
+    state: {
+      symbol: stock.ticker_symbol,
+      exchange: stock.exchange || "NSE",
+      stock,
+    },
+  }
+);
   };
 
   const handleChange = async (e) => {
@@ -248,18 +317,16 @@ const navigate = useNavigate();  const [searchTerm, setSearchTerm] = useState(""
       return;
     }
 
-    if (trimmed === lastQuery) {
-      return;
-    }
+    if (trimmed === lastQuery) return;
 
     setLoading(true);
     setShowDropdown(true);
     setLastQuery(trimmed);
 
     try {
-      const url = `${API_BASE}/api/stocks/search?q=${encodeURIComponent(trimmed)}`;
-
-
+      const url = `${API_BASE}/api/stocks/search?q=${encodeURIComponent(
+        trimmed
+      )}`;
       const res = await fetch(url, {
         method: "GET",
         headers: {
@@ -277,151 +344,29 @@ const navigate = useNavigate();  const [searchTerm, setSearchTerm] = useState(""
       const data = await res.json();
       setResults(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error("Error calling stock_search:", err);
+      console.error("Error calling stock search:", err);
       setResults([]);
     } finally {
       setLoading(false);
     }
   };
 
-const fetchStockDetails = async (ticker, exchange, selected) => {
-  setDetailsLoading(true);
-  setStockDetails(null);
-
-  try {
-    const url = `${API_BASE}/api/stocks/details?symbol=${encodeURIComponent(
-      ticker
-    )}&exchange=${encodeURIComponent(exchange || "")}`;
-
-    const res = await fetch(url, {
-      method: "GET",
-      headers: { "Content-Type": "application/json" },
-    });
-
-    if (!res.ok) {
-      const text = await res.text();
-      console.error("Stock details error:", res.status, text);
-      return;
-    }
-
-    const data = await res.json();
-    setStockDetails(data);
-
-    // ✅ store in "Recently Viewed" after we have details (price/change)
-    if (selected) {
-      pushRecentlyViewed(selected, data);
-    }
-  } catch (err) {
-    console.error("Error fetching stock details:", err);
-  } finally {
-    setDetailsLoading(false);
-  }
-};
-
-
-const handleSelectStock = (stock) => {
-
-  setShowDropdown(false);
-
-  // add to recently viewed immediately
-  pushRecentlyViewed(stock, {});
-
-  // navigate to stock page
-  navigate(`/stocks/${stock.ticker_symbol}`, {
-    state: {
-      stock
-    }
-  });
-
-};
   const handleBlur = () => {
     setTimeout(() => setShowDropdown(false), 150);
   };
-useEffect(() => {
-  if (!selectedStock?.ticker_symbol) return;
 
-  fetchCandles(selectedStock.ticker_symbol, selectedStock.exchange, tf.range, tf.interval);
-
-  const id = setInterval(() => {
-    fetchCandles(selectedStock.ticker_symbol, selectedStock.exchange, tf.range, tf.interval);
-  }, 60000);
-
-  return () => clearInterval(id);
-}, [selectedStock, tf]);
-
-
-  /* --- styles for Most bought section --- */
-  const mostBoughtWrapper = {
-    marginTop: "24px",
-  };
-
-  const mostBoughtTitle = {
-    fontSize: "18px",
-    fontWeight: 700,
-    marginBottom: "12px",
-  };
-
-  const mostBoughtGrid = {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: "12px",
-  };
-
-    const mostBoughtCard = {
-    borderRadius: "16px",
-    padding: "14px 16px",
-    backgroundColor: "#ffffff",   // ⬅️ white box
-    color: "#111827",             // ⬅️ dark text
-    minHeight: "96px",
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "space-between",
-    border: "1px solid #E5E7EB",  // subtle border (optional)
-    boxShadow: "0 6px 14px rgba(0,0,0,0.04)", // light shadow (optional)
-  };
-
-  const mostBoughtName = {
-    fontSize: "14px",
-    fontWeight: 600,
-    marginBottom: "8px",
-    color: "#111827",             // title black
-  };
-
-  const mostBoughtPrice = {
-    fontSize: "16px",
-    fontWeight: 700,
-    color: "#111827",             // price black
-  };
-
-  const mostBoughtChange = (positive) => ({
-    fontSize: "12px",
-    fontWeight: 600,
-    marginTop: "4px",
-    color: positive ? "#16A34A" : "#DC2626", // keep green/red for change
-  });
-
-  const seeMoreCardInner = {
-    flex: 1,
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "center",
-    alignItems: "flex-start",
-    gap: "6px",
-    color: "#111827",             // text black for see-more card
-  };
-
+  const popularStocks = useMemo(() => PLACEHOLDER_STOCKS, []);
 
   return (
     <div>
       <h2 style={{ textAlign: "center", marginBottom: "16px" }}>Stocks</h2>
 
-      {/* Search + dropdown wrapper */}
       <div style={{ position: "relative", marginBottom: "16px" }}>
         <div style={searchRow}>
           <span style={{ fontSize: "18px", marginRight: "8px" }}>🔍</span>
           <input
             style={searchInput}
-            placeholder="Search Stock or BSE Code"
+            placeholder="Search stock name or ticker"
             type="text"
             value={searchTerm}
             onChange={handleChange}
@@ -450,376 +395,622 @@ useEffect(() => {
             {!loading &&
               results.map((stock) => (
                 <button
-                  key={stock.ticker_symbol}
+                  key={`${stock.ticker_symbol}-${stock.exchange || "NSE"}`}
                   type="button"
                   style={dropdownItemStyle}
                   onClick={() => handleSelectStock(stock)}
                 >
-                  <div style={{ fontWeight: 700 }}>
-                    {stock.company_name}
-                  </div>
+                  <div style={{ fontWeight: 700 }}>{stock.company_name}</div>
                   <div style={dropdownItemSecondary}>
-  {stock.ticker_symbol}{stock.exchange ? ` • ${stock.exchange}` : ""}{stock.country ? ` • ${stock.country}` : ""}
-</div>
-
+                    {stock.ticker_symbol}
+                    {stock.exchange ? ` • ${stock.exchange}` : ""}
+                    {stock.country ? ` • ${stock.country}` : ""}
+                  </div>
                 </button>
               ))}
           </div>
         )}
       </div>
 
-          {/* Recently Viewed */}
-<div style={mostBoughtWrapper}>
-          <div style={mostBoughtTitle}>Recently Viewed</div>
+      <div style={sectionWrapper}>
+        <div style={sectionTitle}>Recently Viewed</div>
 
-          <div style={mostBoughtGrid}>
-            {RECENTLY_VIEWED_PLACEHOLDERS.map((s, idx) => {
-              if (s.isSeeMore) {
-                return (
-                  <div key="see-more" style={mostBoughtCard}>
-                    <div style={seeMoreCardInner}>
-                      <div style={mostBoughtName}>See more</div>
-                      <div style={{ fontSize: "12px", opacity: 0.7 }}>
-                        Explore all popular stocks on Batua →
-                      </div>
-                    </div>
-                  </div>
-                );
-              }
-
-              const item = recentlyViewed[s.slot];
-
-              // Empty placeholder card
-              if (!item) {
-                return (
-                  <div
-                    key={`empty-${s.slot}`}
-                    style={{
-                      ...mostBoughtCard,
-                      opacity: 0.45,
-                      borderStyle: "dashed",
-                    }}
-                  >
-                    <div style={mostBoughtName}>No recent stock</div>
-                    <div style={{ fontSize: "12px", opacity: 0.7 }}>
-                      Search and open a stock to see it here
-                    </div>
-                  </div>
-                );
-              }
-
-              // Filled card
-              const price = item.last_price ? `${item.last_price}` : "";
-              const change = item.change_pct
-                ? `${item.change ?? ""} (${item.change_pct}%)`
-                : "";
-
-              const positive = Number(item.change ?? 0) >= 0;
-
+        <div style={stockGrid}>
+          {RECENTLY_VIEWED_PLACEHOLDERS.map((s) => {
+            if (s.isSeeMore) {
               return (
-                <div
-                  key={item.ticker_symbol}
-                  style={mostBoughtCard}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() =>
-  handleSelectStock({
-    company_name: item.company_name,
-    ticker_symbol: item.ticker_symbol,
-    exchange: item.exchange,     // ✅
-    country: item.country,
-    currency: item.currency,
-  })
-}
-
-                >
-                  <div style={mostBoughtName}>{item.company_name}</div>
-
-                  <div>
-                    <div style={mostBoughtPrice}>
-                      {price ? `${price} INR` : ""}
+                <div key="see-more" style={stockCard}>
+                  <div style={seeMoreCardInner}>
+                    <div style={stockName}>See more</div>
+                    <div style={{ fontSize: "12px", opacity: 0.7 }}>
+                      Explore all popular stocks on Batua →
                     </div>
-                    <div style={mostBoughtChange(positive)}>{change}</div>
                   </div>
                 </div>
               );
-            })}
-          </div>
+            }
+
+            const item = recentlyViewed[s.slot];
+
+            if (!item) {
+              return (
+                <div
+                  key={`empty-${s.slot}`}
+                  style={{
+                    ...stockCard,
+                    opacity: 0.45,
+                    borderStyle: "dashed",
+                    cursor: "default",
+                  }}
+                >
+                  <div style={stockName}>No recent stock</div>
+                  <div style={{ fontSize: "12px", opacity: 0.7 }}>
+                    Search and open a stock to see it here
+                  </div>
+                </div>
+              );
+            }
+
+            const positive = Number(item.change ?? 0) >= 0;
+
+            return (
+              <div
+                key={`${item.ticker_symbol}-${item.exchange || "NSE"}`}
+                style={stockCard}
+                role="button"
+                tabIndex={0}
+                onClick={() =>
+                  handleSelectStock({
+                    company_name: item.company_name,
+                    ticker_symbol: item.ticker_symbol,
+                    exchange: item.exchange,
+                    country: item.country,
+                    currency: item.currency,
+                    price: item.last_price,
+                    change: item.change,
+                    change_pct: item.change_pct,
+                  })
+                }
+              >
+                <div style={stockName}>{item.company_name}</div>
+
+                <div>
+                  <div style={stockPrice}>
+                    {item.last_price ? `${item.last_price} INR` : ""}
+                  </div>
+                  <div style={stockChange(positive)}>
+                    {item.change_pct
+                      ? `${item.change ?? ""} (${item.change_pct}%)`
+                      : ""}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
-      
-{/* Popular Stocks Placeholder */}
-<div style={{ marginTop: "28px" }}>
-  <div style={mostBoughtTitle}>Popular Stocks</div>
+      </div>
 
-  <div style={mostBoughtGrid}>
-    {PLACEHOLDER_STOCKS.map((stock) => {
+      <div style={{ marginTop: "28px" }}>
+        <div style={sectionTitle}>Popular Stocks</div>
 
-      const positive = !stock.change.includes("-");
+        <div style={stockGrid}>
+          {popularStocks.map((stock) => {
+            const positive = !stock.change.includes("-");
 
-      return (
-        <div
-          key={stock.ticker}
-          style={mostBoughtCard}
-          role="button"
-          tabIndex={0}
-          onClick={() =>
-            handleSelectStock({
-              company_name: stock.name,
-              ticker_symbol: stock.ticker,
-              exchange: "NSE",
-            })
-          }
-        >
-          <div style={mostBoughtName}>{stock.name}</div>
+            return (
+              <div
+                key={stock.ticker}
+                style={stockCard}
+                role="button"
+                tabIndex={0}
+                onClick={() =>
+                  handleSelectStock({
+                    company_name: stock.name,
+                    ticker_symbol: stock.ticker,
+                    exchange: "NSE",
+                    country: "India",
+                    currency: "INR",
+                    price: stock.price,
+                  })
+                }
+              >
+                <div style={stockName}>{stock.name}</div>
 
-          <div>
-            <div style={mostBoughtPrice}>
-              {stock.price} INR
-            </div>
-            <div style={mostBoughtChange(positive)}>
-              {stock.change}
-            </div>
-          </div>
+                <div>
+                  <div style={stockPrice}>{stock.price} INR</div>
+                  <div style={stockChange(positive)}>{stock.change}</div>
+                </div>
+              </div>
+            );
+          })}
         </div>
-      );
-    })}
-  </div>
-</div>
-
-      {/* Stock detail view */}
-
-  
+      </div>
     </div>
   );
 }
+function MiniLineChart({ data = [] }) {
+  const pointsData = data
+    .map((item) => Number(item.close))
+    .filter((value) => Number.isFinite(value));
 
-/* ---- Stock details layout (Nifty-style) ---- */
+  if (pointsData.length < 2) {
+    return <div style={{ color: "#6B7280" }}>No chart data available.</div>;
+  }
 
-function StockDetailsSection({
-  selectedStock,
-  details,
-  loading,
-  tf,
-  setTf,
-  candles,
-  chartLoading,
-}) {
-  const wrapper = {
-    marginTop: "8px",
-    padding: "16px",
-    borderRadius: "18px",
-    border: "1px solid #e5e7eb",
-    backgroundColor: "#ffffff",
-  };
+  const width = 900;
+  const height = 260;
+  const padding = 28;
 
-  const headerRow = {
-    display: "flex",
-    alignItems: "center",
-    gap: "16px",
-    marginBottom: "16px",
-  };
+  const min = Math.min(...pointsData);
+  const max = Math.max(...pointsData);
+  const range = max - min || 1;
 
-  const circle = {
-    width: "72px",
-    height: "72px",
-    borderRadius: "999px",
-    backgroundColor: "#111b5c",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: "#ffffff",
-    fontSize: "28px",
-    fontWeight: 700,
-  };
+  const points = pointsData
+    .map((price, index) => {
+      const x =
+        padding +
+        (index / Math.max(pointsData.length - 1, 1)) * (width - padding * 2);
 
-  const priceRow = {
-    display: "flex",
-    alignItems: "baseline",
-    gap: "8px",
-    marginTop: "8px",
-  };
+      const y =
+        height -
+        padding -
+        ((price - min) / range) * (height - padding * 2);
 
-  const priceText = {
-    fontSize: "32px",
-    fontWeight: 700,
-  };
+      return `${x},${y}`;
+    })
+    .join(" ");
 
-  const changeText = (isPositive) => ({
-    fontSize: "16px",
-    fontWeight: 600,
-    color: isPositive ? "#16a34a" : "#b91c1c",
-  });
-
-  const sectionTitle = {
-    fontSize: "18px",
-    fontWeight: 700,
-    margin: "20px 0 8px",
-  };
-
-  const card = {
-    borderRadius: "16px",
-    border: "1px solid #e5e7eb",
-    padding: "12px 16px",
-    backgroundColor: "#f9fafb",
-  };
-
-  const twoCol = {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: "16px",
-  };
-
-  const label = { fontSize: "13px", color: "#6b7280" };
-  const value = { fontSize: "15px", fontWeight: 600 };
-
-  const techRow = {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr 1fr",
-    gap: "16px",
-  };
-
-  // fallbacks if details not loaded yet
-  const lastPrice = details?.last_price ?? "—";
-  const absChange = details?.change ?? 0;
-  const pctChange = details?.change_pct ?? 0;
-  const isPositive = Number(absChange) >= 0;
+  const latest = pointsData[pointsData.length - 1];
+  const first = pointsData[0];
+  const returnPct = ((latest - first) / first) * 100;
 
   return (
-    <div style={wrapper}>
-      {/* Header */}
-      <div style={headerRow}>
-        <div style={circle}>
-          {/* first 2 letters as an icon */}
-          {selectedStock.company_name.trim().slice(0, 2).toUpperCase()}
-        </div>
+    <div
+      style={{
+        marginTop: "18px",
+        padding: "18px",
+        borderRadius: "18px",
+        background: "#111",
+        color: "#fff",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between" }}>
         <div>
-          <div style={{ fontSize: "22px", fontWeight: 700 }}>
-            {selectedStock.company_name.trim()}
+          <div style={{ color: "#888", fontWeight: 700 }}>
+            30 DAY PRICE GRAPH
           </div>
-          <div style={{ fontSize: "14px", color: "#6b7280" }}>
-            {selectedStock.ticker_symbol}
+          <div style={{ fontSize: "26px", fontWeight: 800 }}>
+            ₹{latest.toFixed(2)}
           </div>
+        </div>
 
-          <div style={priceRow}>
-            <span style={priceText}>{lastPrice} INR</span>
-            <span style={changeText(isPositive)}>
-              {absChange} {pctChange ? `(${pctChange}%)` : ""}
-            </span>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ color: "#888", fontWeight: 700 }}>30d return</div>
+          <div style={{ fontSize: "20px", fontWeight: 800 }}>
+            {returnPct >= 0 ? "+" : ""}
+            {returnPct.toFixed(1)}%
+          </div>
+          <div style={{ color: "#888", marginTop: "8px" }}>High / Low</div>
+          <div>
+            ₹{max.toFixed(0)} / ₹{min.toFixed(0)}
           </div>
         </div>
       </div>
 
-      {loading && (
-        <div style={{ fontSize: "14px", color: "#6b7280" }}>
-          Loading stock details…
-        </div>
-      )}
-<div style={sectionTitle}>Chart</div>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        style={{ width: "100%", height: "260px", marginTop: "12px" }}
+      >
+        <polyline
+          fill="none"
+          stroke="#7AC943"
+          strokeWidth="5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          points={points}
+        />
+      </svg>
+    </div>
+  );
+}
+/* ===================== Suggestions tab ===================== */
+function SuggestionsTab() {
+  const [symbol, setSymbol] = useState("");
+  const [amount, setAmount] = useState("10000");
+  const [risk, setRisk] = useState("balanced");
+  const [loading, setLoading] = useState(false);
+  const [recommendation, setRecommendation] = useState(null);
+  const [error, setError] = useState("");
+  const [selectedDetails, setSelectedDetails] = useState(null);
+const [selectedHistory, setSelectedHistory] = useState([]);
+const [stockPreviewLoading, setStockPreviewLoading] = useState(false);
+const [stockSearch, setStockSearch] = useState("");
+const [stockResults, setStockResults] = useState([]);
+const [stockSearchLoading, setStockSearchLoading] = useState(false);
+const [showStockDropdown, setShowStockDropdown] = useState(false);
+const [selectedStock, setSelectedStock] = useState(null);
 
-<div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "10px" }}>
-  {TIMEFRAMES.map((t) => (
-    <button
-      key={t.label}
-      type="button"
-      onClick={() => setTf(t)}
+const handleStockSearch = async (e) => {
+  const value = e.target.value;
+  setStockSearch(value);
+  setSelectedStock(null);
+  setSymbol("");
+
+  const trimmed = value.trim();
+
+  if (trimmed.length < 2) {
+    setStockResults([]);
+    setShowStockDropdown(false);
+    return;
+  }
+
+  try {
+    setStockSearchLoading(true);
+    setShowStockDropdown(true);
+
+    const res = await fetch(
+      `${API_BASE}/api/stocks/search?q=${encodeURIComponent(trimmed)}`
+    );
+
+    const data = await res.json();
+    setStockResults(Array.isArray(data) ? data : []);
+  } catch (err) {
+    setStockResults([]);
+  } finally {
+    setStockSearchLoading(false);
+  }
+};
+
+const handleSelectSuggestionStock = async (stock) => {
+  setSelectedStock(stock);
+  setStockSearch(`${stock.company_name} (${stock.ticker_symbol})`);
+  setSymbol(stock.ticker_symbol);
+  setShowStockDropdown(false);
+
+  try {
+    setStockPreviewLoading(true);
+
+    const exchange = stock.exchange || "NSE";
+
+    const [detailsData, historyData] = await Promise.all([
+      fetchStockDetails(stock.ticker_symbol, exchange),
+      fetchStockHistory(stock.ticker_symbol, exchange, "1mo"),
+    ]);
+
+    setSelectedDetails(detailsData);
+    setSelectedHistory(Array.isArray(historyData) ? historyData : []);
+  } catch (err) {
+    setSelectedDetails(null);
+    setSelectedHistory([]);
+  } finally {
+    setStockPreviewLoading(false);
+  }
+};
+  const detectedSymbol = selectedStock?.ticker_symbol || symbol.trim().toUpperCase();
+const detectedExchange = selectedStock?.exchange || "NSE";
+  const suggestedSize = Math.round(Number(amount || 0) * 0.08);
+
+  const handleGetBrief = async () => {
+    if (!detectedSymbol) {
+      setError("Enter a stock symbol first.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError("");
+      setRecommendation(null);
+
+const data = await fetchStockRecommendation(detectedSymbol, detectedExchange);
+      setRecommendation({
+        symbol: detectedSymbol,
+        amount,
+        suggestedSize,
+        risk,
+        ...data,
+      });
+    } catch (err) {
+      setError(err.message || "Failed to get recommendation.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div>
+      <h2 style={{ textAlign: "center", marginBottom: "16px" }}>
+        AI Stock Suggestions
+      </h2>
+
+      <div className="stock-card">
+        <div className="stock-card-header">
+          <h2>Today's Question</h2>
+        </div>
+
+        <label>Enter a stock</label>
+
+<div style={{ position: "relative", marginTop: "8px" }}>
+  <input
+    value={stockSearch}
+    onChange={handleStockSearch}
+    onFocus={() => {
+      if (stockResults.length > 0) setShowStockDropdown(true);
+    }}
+    placeholder="Search stock name or ticker"
+    style={{
+      width: "100%",
+      padding: "14px",
+      borderRadius: "14px",
+      border: "1px solid #D1D5DB",
+    }}
+  />
+
+  {showStockDropdown && (
+    <div
       style={{
-        padding: "6px 10px",
-        borderRadius: "999px",
-        border: t.label === tf.label ? "2px solid #111827" : "1px solid #E5E7EB",
+        position: "absolute",
+        top: "100%",
+        left: 0,
+        right: 0,
         background: "#fff",
-        fontSize: "12px",
-        fontWeight: 700,
-        cursor: "pointer",
+        border: "1px solid #D1D5DB",
+        borderRadius: "14px",
+        marginTop: "6px",
+        zIndex: 50,
+        maxHeight: "240px",
+        overflowY: "auto",
       }}
     >
-      {t.label}
-    </button>
-  ))}
-</div>
+      {stockSearchLoading && (
+        <div style={{ padding: "10px" }}>Searching...</div>
+      )}
 
-<div style={{ ...card, padding: "10px", height: "auto" }}>
-<div style={{ ...card, padding: "10px", height: "auto" }}>
-  {chartLoading ? (
-    <div style={{ fontSize: "14px", color: "#6b7280" }}>
-      Loading chart…
-    </div>
-  ) : Array.isArray(candles) && candles.length > 0 ? (
-    <StockChart candles={candles} />
-  ) : (
-    <div style={{ fontSize: "14px", color: "#6b7280" }}>
-      No chart data available for this timeframe.
+      {!stockSearchLoading && stockResults.length === 0 && (
+        <div style={{ padding: "10px" }}>No stocks found</div>
+      )}
+
+      {!stockSearchLoading &&
+        stockResults.map((stock) => (
+          <button
+            key={`${stock.ticker_symbol}-${stock.exchange || "NSE"}`}
+            type="button"
+            onClick={() => handleSelectSuggestionStock(stock)}
+            style={{
+              width: "100%",
+              padding: "12px",
+              textAlign: "left",
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+            }}
+          >
+            <strong>{stock.company_name}</strong>
+            <div style={{ fontSize: "12px", color: "#16a34a" }}>
+              {stock.ticker_symbol}
+              {stock.exchange ? ` • ${stock.exchange}` : ""}
+              {stock.country ? ` • ${stock.country}` : ""}
+            </div>
+          </button>
+        ))}
     </div>
   )}
 </div>
+ {stockPreviewLoading && (
+  <div className="stock-card" style={{ marginTop: "18px" }}>
+    Loading stock preview...
+  </div>
+)}
 
+{selectedDetails && !stockPreviewLoading && (
+  <div style={{ marginTop: "18px" }}>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(4, 1fr)",
+        gap: "12px",
+      }}
+    >
+      <div className="stock-metric">
+        <span>Nifty 50</span>
+        <strong>22,463</strong>
+        <p style={{ color: "#16A34A", margin: 0 }}>+0.6% today</p>
+      </div>
+
+      <div className="stock-metric">
+        <span>Sensex</span>
+        <strong>73,902</strong>
+        <p style={{ color: "#16A34A", margin: 0 }}>+0.5% today</p>
+      </div>
+
+      <div className="stock-metric">
+        <span>{selectedDetails.ticker_symbol}</span>
+        <strong>₹{Number(selectedDetails.quote?.last_price || 0).toFixed(2)}</strong>
+        <p style={{ color: "#6B7280", margin: 0 }}>selected stock</p>
+      </div>
+
+      <div className="stock-metric">
+        <span>Market signal</span>
+        <strong>
+          {Number(selectedDetails.quote?.change_pct || 0) >= 0 ? "Positive" : "Weak"}
+        </strong>
+        <p
+          style={{
+            color:
+              Number(selectedDetails.quote?.change_pct || 0) >= 0
+                ? "#16A34A"
+                : "#DC2626",
+            margin: 0,
+          }}
+        >
+          {Number(selectedDetails.quote?.change_pct || 0).toFixed(2)}%
+        </p>
+      </div>
+    </div>
+
+    <MiniLineChart data={selectedHistory} />
+  </div>
+)}
+
+<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginTop: "16px" }}>
+  <div>
+    <label>Ticker</label>
+    <input
+      value={symbol}
+      onChange={(e) => setSymbol(e.target.value)}
+      placeholder="RELIANCE"
+      style={{
+        width: "100%",
+        padding: "14px",
+        borderRadius: "14px",
+        border: "1px solid #D1D5DB",
+      }}
+    />
+  </div>
+
+  <div>
+    <label>Amount you may invest</label>
+    <input
+      value={amount}
+      onChange={(e) => setAmount(e.target.value)}
+      placeholder="10000"
+      type="number"
+      style={{
+        width: "100%",
+        padding: "14px",
+        borderRadius: "14px",
+        border: "1px solid #D1D5DB",
+      }}
+    />
+  </div>
 </div>
 
-
-    
-      {/* Key data points */}
-      <div style={sectionTitle}>Key data points</div>
-      <div style={twoCol}>
-        <div style={card}>
-          <div style={label}>Volume</div>
-          <div style={value}>{details?.volume ?? "—"}</div>
-        </div>
-        <div style={card}>
-          <div style={label}>Previous close</div>
-          <div style={value}>{details?.prev_close ?? "—"}</div>
-        </div>
-        <div style={card}>
-          <div style={label}>Open</div>
-          <div style={value}>{details?.open ?? "—"}</div>
-        </div>
-        <div style={card}>
-          <div style={label}>Day's range</div>
-          <div style={value}>
-            {details?.day_low && details?.day_high
-              ? `${details.day_low} — ${details.day_high}`
-              : "—"}
+<div style={{ marginTop: "16px" }}>
+  <label>Now choose your comfort level</label>
+  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px", marginTop: "8px" }}>
+    {["careful", "balanced", "adventurous"].map((item) => (
+      <button
+        key={item}
+        onClick={() => setRisk(item)}
+        style={{
+          padding: "14px",
+          borderRadius: "14px",
+          border: risk === item ? "2px solid #2563EB" : "1px solid #D1D5DB",
+          background: risk === item ? "#EFF6FF" : "#fff",
+          fontWeight: 700,
+          cursor: "pointer",
+          textTransform: "capitalize",
+        }}
+      >
+        {item}
+      </button>
+    ))}
+  </div>
+</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px", marginTop: "20px" }}>
+          <div className="stock-metric">
+            <span>Amount checked</span>
+            <strong>₹{Number(amount || 0).toLocaleString("en-IN")}</strong>
+          </div>
+          <div className="stock-metric">
+            <span>Suggested starting size</span>
+            <strong>₹{suggestedSize.toLocaleString("en-IN")}</strong>
+          </div>
+          <div className="stock-metric">
+            <span>Detected symbol</span>
+            <strong>{detectedSymbol || "--"}</strong>
           </div>
         </div>
+
+        {error && <div className="stock-error" style={{ marginTop: "14px" }}>{error}</div>}
+
+        <button
+          onClick={handleGetBrief}
+          disabled={loading}
+          style={{
+            marginTop: "18px",
+            padding: "14px 20px",
+            borderRadius: "14px",
+            border: "none",
+            background: "#2563EB",
+            color: "#fff",
+            fontWeight: 800,
+            cursor: "pointer",
+          }}
+        >
+          {loading ? "Checking..." : "Get Today's Brief"}
+        </button>
       </div>
 
-      {/* About */}
-      <div style={sectionTitle}>About {selectedStock.company_name.trim()}</div>
-      <div style={{ ...card, fontSize: "14px", lineHeight: 1.5 }}>
-        {details?.about ??
-          "Summary about this stock will appear here once you connect the detailed fundamentals API."}
+ {recommendation && (
+  <div className="stock-card" style={{ marginTop: "20px" }}>
+    <div className="stock-card-header">
+      <h2>{recommendation.symbol} Agent Report</h2>
+    </div>
+
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+      <div className="stock-metric stock-metric-wide">
+        <span>Researcher Agent · {recommendation.symbol}</span>
+        <strong>{recommendation.researcher?.label || "Neutral"}</strong>
+        <div style={{ marginTop: "10px", fontSize: "24px", fontWeight: 800 }}>
+          {recommendation.researcher?.confidence ?? "--"}%
+        </div>
+        <p>{recommendation.researcher?.summary}</p>
+        <div>
+          Bull: {recommendation.researcher?.bullScore ?? "--"} | Bear:{" "}
+          {recommendation.researcher?.bearScore ?? "--"}
+        </div>
+        {(recommendation.researcher?.reasons || []).map((reason, index) => (
+          <p key={index}>– {reason}</p>
+        ))}
       </div>
 
-      {/* Technicals */}
-      <div style={sectionTitle}>Technicals</div>
-      <div style={{ fontSize: "14px", color: "#6b7280", marginBottom: "8px" }}>
-        Summarizing what the indicators are suggesting.
+      <div className="stock-metric stock-metric-wide">
+        <span>Analyst Agent · {recommendation.symbol}</span>
+        <p>P/E Ratio<br /><strong>{recommendation.analyst?.peRatio ?? "--"}</strong></p>
+        <p>5-day momentum<br /><strong>{recommendation.analyst?.momentum5d ?? "--"}</strong></p>
+        <p>AI confidence<br /><strong>{recommendation.analyst?.confidence ?? "--"} / 100</strong></p>
+        <p>Short term outlook<br /><strong>{recommendation.analyst?.outlook ?? "--"}</strong></p>
+        {(recommendation.analyst?.notes || []).map((note, index) => (
+          <p key={index}>– {note}</p>
+        ))}
       </div>
-      <div style={techRow}>
-        <div style={card}>
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>Oscillators</div>
-          <div style={{ fontSize: "14px" }}>
-            {details?.technicals?.oscillators ?? "Neutral"}
-          </div>
+    </div>
+
+    <div className="stock-metric stock-metric-wide" style={{ marginTop: "16px" }}>
+      <span>Risk Manager · Your profile: {risk.toUpperCase()} risk</span>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px", marginTop: "12px" }}>
+        <div>
+          <span>Suitability</span>
+          <strong>{recommendation.riskManager?.suitability || "--"}</strong>
         </div>
-        <div style={card}>
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>Summary</div>
-          <div style={{ fontSize: "14px" }}>
-            {details?.technicals?.summary ?? "Strong buy"}
-          </div>
+        <div>
+          <span>Watch out for</span>
+          <strong>{recommendation.riskManager?.warning || "--"}</strong>
         </div>
-        <div style={card}>
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>
-            Moving Averages
-          </div>
-          <div style={{ fontSize: "14px" }}>
-            {details?.technicals?.moving_averages ?? "Strong buy"}
-          </div>
+        <div>
+          <span>Opportunity</span>
+          <strong>{recommendation.riskManager?.opportunity || "--"}</strong>
         </div>
       </div>
     </div>
+
+    <div style={{
+      marginTop: "18px",
+      padding: "18px",
+      borderRadius: "16px",
+      background: "#DCFCE7",
+      color: "#14532D",
+      fontWeight: 800,
+      fontSize: "18px",
+    }}>
+      What to do today: {recommendation.riskManager?.action || "Watch before investing."}
+    </div>
+  </div>
+)}
+    </div>
   );
 }
-
-/* ===================== Other tabs (unchanged) ===================== */
+/* ===================== Other tabs ===================== */
 
 function renderPortfolioTab() {
   const card = {
@@ -920,39 +1111,7 @@ function renderPortfolioTab() {
       </div>
     </div>
   );
-}
-
-function renderSuggestionsTab() {
-  const card = {
-    backgroundColor: "#d2e4ff",
-    borderRadius: "18px",
-    padding: "14px 18px",
-    marginBottom: "12px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    fontSize: "18px",
-    fontWeight: 700,
-  };
-
-  return (
-    <div>
-      <h2 style={{ textAlign: "center", marginBottom: "16px" }}>Suggestions</h2>
-
-      <div style={card}>
-        <span>Suggestion 1</span>
-        <span>➤</span>
-      </div>
-      <div style={card}>
-        <span>Suggestion 2</span>
-        <span>➤</span>
-      </div>
-      <div style={card}>
-        <span>Suggestion 3</span>
-        <span>➤</span>
-      </div>
-    </div>
-  );
+  
 }
 
 function renderOrdersTab() {
@@ -969,7 +1128,6 @@ function renderOrdersTab() {
       <div style={itemStyle}>Open Orders</div>
       <div style={itemStyle}>Executed Orders</div>
       <div style={itemStyle}>Cancelled Orders</div>
-      <div style={{ fontSize: "14px", opacity: 0.7, marginTop: "8px" }}></div>
     </div>
   );
 }
