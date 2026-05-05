@@ -1,90 +1,93 @@
-import React, { useEffect, useMemo, useRef } from "react";
-import { createChart, CrosshairMode } from "lightweight-charts";
+import React, { useMemo } from "react";
 
-export default function StockChart({ candles }) {
-  const containerRef = useRef(null);
-  const chartRef = useRef(null);
-  const seriesRef = useRef(null);
-
-  const formatted = useMemo(() => {
-    return (candles || [])
-      .map((c) => {
-        let t = c.time;
-
-        // epoch ms → seconds
-        if (typeof t === "number") {
-          t = t > 1e12 ? Math.floor(t / 1000) : t;
-        }
-
-        // ISO → YYYY-MM-DD
-        if (typeof t === "string" && t.includes("T")) {
-          t = t.slice(0, 10);
-        }
-
-        if (!t) return null;
-
-        return {
-          time: t,
-          open: Number(c.open),
-          high: Number(c.high),
-          low: Number(c.low),
-          close: Number(c.close),
-        };
-      })
-      .filter(Boolean);
+export default function StockChart({ candles = [] }) {
+  const data = useMemo(() => {
+    return candles
+      .map((c) => ({
+        time: c.time,
+        close: Number(c.close),
+      }))
+      .filter((c) => Number.isFinite(c.close));
   }, [candles]);
 
-  useEffect(() => {
-    if (!containerRef.current) return;
+  if (data.length === 0) {
+    return <div className="stock-muted">No chart data available.</div>;
+  }
 
-    const chart = createChart(containerRef.current, {
-      width: Math.max(containerRef.current.clientWidth, 300),
-      height: 260,
-      layout: {
-        background: { color: "#ffffff" },
-        textColor: "#111827",
-      },
-      grid: {
-        vertLines: { color: "#EEF2FF" },
-        horzLines: { color: "#EEF2FF" },
-      },
-      crosshair: { mode: CrosshairMode.Normal },
-      rightPriceScale: { borderColor: "#E5E7EB" },
-      timeScale: { borderColor: "#E5E7EB", timeVisible: true },
-    });
+  const width = 900;
+  const height = 320;
+  const padding = 32;
 
-    const series = chart.addCandlestickSeries({
-      upColor: "#16a34a",
-      downColor: "#ef4444",
-      borderUpColor: "#16a34a",
-      borderDownColor: "#ef4444",
-      wickUpColor: "#16a34a",
-      wickDownColor: "#ef4444",
-    });
+  const prices = data.map((d) => d.close);
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  const range = max - min || 1;
 
-    chartRef.current = chart;
-    seriesRef.current = series;
+  const points = data
+    .map((d, i) => {
+      const x =
+        padding + (i / Math.max(data.length - 1, 1)) * (width - padding * 2);
+      const y =
+        height -
+        padding -
+        ((d.close - min) / range) * (height - padding * 2);
 
-    const resize = () => {
-      if (!containerRef.current) return;
-      chart.applyOptions({
-        width: Math.max(containerRef.current.clientWidth, 300),
-      });
-    };
+      return `${x},${y}`;
+    })
+    .join(" ");
 
-    window.addEventListener("resize", resize);
+  const latest = data[data.length - 1]?.close;
 
-    return () => {
-      window.removeEventListener("resize", resize);
-      chart.remove();
-    };
-  }, []);
+  return (
+    <div style={{ width: "100%", overflowX: "auto" }}>
+      <div style={{ marginBottom: "10px", fontWeight: 700 }}>
+        Latest: ₹{latest.toFixed(2)}
+      </div>
 
-  useEffect(() => {
-    if (!seriesRef.current) return;
-    seriesRef.current.setData(formatted);
-    chartRef.current?.timeScale().fitContent();
-  }, [formatted]);
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        style={{
+          width: "100%",
+          height: "320px",
+          background: "#ffffff",
+          borderRadius: "14px",
+        }}
+      >
+        <line
+          x1={padding}
+          y1={height - padding}
+          x2={width - padding}
+          y2={height - padding}
+          stroke="#e5e7eb"
+          strokeWidth="2"
+        />
 
-  return <div ref={containerRef} style={{ width: "100%" }} />;
+        <line
+          x1={padding}
+          y1={padding}
+          x2={padding}
+          y2={height - padding}
+          stroke="#e5e7eb"
+          strokeWidth="2"
+        />
+
+        <polyline
+          fill="none"
+          stroke="#2563eb"
+          strokeWidth="4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          points={points}
+        />
+
+        <text x={padding} y={24} fontSize="14" fill="#6b7280">
+          ₹{max.toFixed(2)}
+        </text>
+
+        <text x={padding} y={height - 8} fontSize="14" fill="#6b7280">
+          ₹{min.toFixed(2)}
+        </text>
+      </svg>
+    </div>
+  );
 }
